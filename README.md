@@ -145,14 +145,20 @@ Syaq is a Claude Code hooks module with six hooks:
 - **`command.run`**, for `/syaq` only, answers the command. Syaq sees no other command.
 - **`session.measure`** refreshes the panel when the context moves. When only the rate limits or cost moved, just those figures update.
 - **`session.compact`** measures again after each compaction.
-- **`prompt.suggest`**, for Claude Code's own suggestions only, puts `/compact` in their place while the nudge is pending.
+- **`prompt.suggest`**, for Claude Code's own suggestions only, puts `/compact` in their place while the nudge is pending. It never changes a suggestion another plugin makes, and it leaves Claude Code's own alone while no nudge is pending.
 - **`ui.render`**, on the band above the prompt, draws the panel and passes the band on, so whatever else draws there stacks underneath.
 
 Beyond those it uses Claude Code's usage figures for the session, its store for your view, its settings for the threshold, and its toasts.
 
+### What it sets
+
+Syaq changes one setting: its own **Suggest /compact at (%)** (`syaq.compactAt`, a number from 1 to 99), and only when you run `/syaq at <percent>`. It sets no environment variables and no other configuration.
+
 ## Your data
 
-Everything stays on your machine. Your view is kept in Syaq's own store under your Claude Code configuration folder, and the threshold in your Claude Code settings. Syaq reads no files, runs no programs, makes no network calls, and reads no credentials.
+Everything stays on your machine. Your view is kept in Syaq's own store under your Claude Code configuration folder, and the threshold in your Claude Code settings. Syaq reads no files, runs no programs and makes no network calls.
+
+The rate-limit figures in the footer come from Claude Code's own usage figures for the session, which Claude Code gets with your login. Syaq only displays them: it never sees your credentials, and it sends none of these figures anywhere.
 
 ## Develop
 

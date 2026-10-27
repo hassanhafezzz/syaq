@@ -185,11 +185,6 @@ const patchFigures = async ($: EngineInterface, rateLimits: SessionRateLimit[], 
   await update($, snapshot, s => (s ? { ...s, limits: toLimits(rateLimits), costUsd: cost?.usd } : s))
 }
 
-// The `compactAt` row's key in /config: `<plugin>.<field>`, the plugin's name as
-// loaded (a --plugin-dir checkout's can differ), so it is looked up, not spelled
-const findCompactAtRow = async ($: EngineInterface) =>
-  (await $.config.list()).find(r => r.provider.plugin.startsWith('syaq') && r.key.endsWith('.compactAt'))
-
 export const register: Register = (on, options) => {
   // The band measures once on its own; later measurements come through the hooks
   let hasMeasuredFromBand = false
@@ -231,9 +226,10 @@ export const register: Register = (on, options) => {
     if (at) {
       const percent = toCompactAt(Number((at[1] ?? '').replace(/%$/, '')))
       if (percent === null) return { text: 'Give a percent from 1 to 99, like /syaq at 70.' }
-      const row = await findCompactAtRow($).catch(() => undefined)
-      if (!row) return { text: 'The setting is unavailable; set it in /config.' }
-      const { deny } = await $.config.set({ key: row.key, value: percent }).catch(() => ({ deny: 'it could not be saved' }))
+      // The `compactAt` row in /config, keyed `<plugin>.<field>`
+      const { deny } = await $.config
+        .set({ key: 'syaq.compactAt', value: percent })
+        .catch(() => ({ deny: 'it could not be saved' }))
       return { text: deny ? `Not changed: ${deny}` : `Suggests /compact from ${percent}%` }
     }
 
@@ -301,7 +297,7 @@ export const register: Register = (on, options) => {
       const shown = snap.limits.map(l => ({ label: limitLabel(l.kind, 'short'), percent: l.percent }))
       const limitsWidth = shown.reduce((n, l) => n + `  ·  ${l.label} ${l.percent}%`.length, 0)
       const hint = shouldCompact ? '  ·  run /compact' : ''
-      // Border and padding, "◆ ", the bar, then "  usage  pct", the hint, the model and the
+      // Border and padding, "✸ ", the bar, then "  usage  pct", the hint, the model and the
       // limits; a narrow terminal drops the limits first, then the model, never the hint
       const room = e.props.bodyColumns - 4
       const fixed = 2 + `  ${usage}  ${pct}${hint}`.length
@@ -317,7 +313,7 @@ export const register: Register = (on, options) => {
       body = (
         <Box borderStyle="round" borderColor="subtle" paddingX={1}>
           <Text wrap="truncate-end">
-            <Text color="claude">◆ </Text>
+            <Text color="claude">✸ </Text>
             {barRuns(drawn, width).map((r, i) => (
               <Text key={`r${i}`} color={r.color}>
                 {r.text}
@@ -377,7 +373,7 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column" borderStyle="round" borderColor="subtle" paddingX={1}>
           <Box flexDirection="row" justifyContent="space-between" marginBottom={1}>
             <Text wrap="truncate-end">
-              <Text color="claude">◆ </Text>
+              <Text color="claude">✸ </Text>
               <Text weight="bold">Context</Text>
               {shouldCompact ? <Text color="warning">{hint}</Text> : null}
             </Text>

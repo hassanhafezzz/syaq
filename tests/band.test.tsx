@@ -395,21 +395,9 @@ test('past a lowered compactAt the band suggests /compact', { options: { compact
   await ui.unmount()
 })
 
-// Stands for /config: one compactAt row, recording each change
+// Stands for /config, recording each change
 const configMenu = (on: On) => {
   const changes: { key: string; value: unknown }[] = []
-  on('config.list', () => ({
-    value: [
-      {
-        key: 'syaq.compactAt',
-        label: 'Suggest /compact at (%)',
-        kind: 'number',
-        value: 60,
-        provider: { plugin: 'syaq', tier: 'user' },
-        isLocked: false,
-      },
-    ],
-  }))
   on('config.set', (_, e) => {
     changes.push({ key: e.key, value: e.value })
     return { value: e.value }
