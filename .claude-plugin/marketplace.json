@@ -1,0 +1,6 @@
+{
+  "name": "syaq",
+  "owner": { "name": "hassanhafezzz" },
+  "description": "A Claude Code mod that shows context-window usage above the prompt",
+  "plugins": [{ "name": "syaq", "source": "./" }]
+}

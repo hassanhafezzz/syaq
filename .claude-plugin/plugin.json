@@ -1,0 +1,21 @@
+{
+  "name": "syaq",
+  "version": "0.1.0",
+  "description": "A context-usage panel above the prompt: a per-category bar, the auto-compact point, a legend, and a nudge to /compact once the context is over 60% (or the percent you set)",
+  "author": { "name": "hassanhafezzz" },
+  "homepage": "https://github.com/hassanhafezzz/syaq",
+  "repository": "https://github.com/hassanhafezzz/syaq",
+  "license": "MIT",
+  "keywords": ["context", "tokens", "usage", "status"],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "compactAt": {
+      "type": "number",
+      "title": "Suggest /compact at (%)",
+      "description": "How full the context gets before the panel turns yellow and suggests /compact",
+      "default": 60,
+      "min": 1,
+      "max": 99
+    }
+  }
+}
