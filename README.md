@@ -50,7 +50,7 @@ claude plugin uninstall syaq@syaq
 
 ## What it looks like
 
-There are two views: a full (detailed) view and a slim (compact) view. and you can switch between them using (`/syaq`). 
+There are two views: a slim (compact) view, shown by default, and a full (detailed) view. Switch between them with `/syaq`.
 
 Each colour is a category of the context window, sized to its share, and the yellow marker is where auto-compaction starts.
 
@@ -83,16 +83,16 @@ When the context crosses the threshold, the prompt box offers `/compact` (Tab, t
 /syaq at 70        suggest /compact from 70% instead of 60% (any percent from 1 to 99)
 ```
 
-Your view is remembered across sessions. The views' earlier names, `detailed` and `simple`, still work.
+Syaq starts in the slim view; whichever view you pick is remembered across sessions. The views' earlier names, `detailed` and `simple`, still work.
 
 Syaq answers in the chat:
 
 ```
 /syaq
-syaq: Slim view on
-
-/syaq full
 syaq: Full view on
+
+/syaq slim
+syaq: Slim view on
 
 /syaq at 70
 syaq: Suggests /compact from 70%

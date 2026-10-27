@@ -5,7 +5,7 @@ import type { Limit, Segment, Snapshot, View } from '../types'
 
 // Bump the shape when Snapshot changes: a value stored under another reads as absent
 const snapshot = atom({ plugin: 'syaq', key: 'snapshot' } as const, null, { shape: 'v2' })
-const view = atom({ plugin: 'syaq', key: 'view' } as const, 'full')
+const view = atom({ plugin: 'syaq', key: 'view' } as const, 'slim')
 
 // "detailed" and "simple" are the views' earlier names: the command and a stored
 // choice still take them
