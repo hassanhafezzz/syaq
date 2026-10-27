@@ -2,8 +2,6 @@
 
 # Syaq
 
-Know your context. Compact before it hurts.
-
 Syaq (سياق, Arabic for context) is a context mod for Claude Code.
 
 Claude Code's context fills up quietly in the background. You only find out when auto-compaction interrupts you, at the worst moment.
@@ -12,15 +10,7 @@ Syaq puts it in view: how full the context is, what's filling it, where auto-com
 
 When you hit a threshold you set (60% by default), it nudges you to run `/compact`, while it's still cheap, instead of at the last second.
 
-```
-╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ◆ Context                                                 40k of 1M · auto-compacts at 967k  4%  │
-│                                                                                                  │
-│ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┃░░ │
-│ ■ system prompt 2.9k <1%  ■ system tools 27k 3%  ■ skills 10k 1%  ■ free space 927k              │
-│                                                       model Opus 5.5 · 5h limit 19% · weekly 46% │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
+![The Syaq panel at 62%: a yellow badge with "over 60% · consider running /compact", a bar split into coloured categories, a legend with each one's tokens, the auto-compact marker near the end, and the model and rate limits in the footer](docs/screenshots/over-full.png)
 
 ## Install
 
@@ -60,37 +50,25 @@ claude plugin uninstall syaq@syaq
 
 ## What it looks like
 
-The panel at the top is the full view early in a session, on a terminal 100 columns or wider. Each colour is a category of the context window, sized to its share, and the `┃` is where auto-compaction starts.
+There are two views: a full (detailed) view and a slim (compact) view. and you can switch between them using (`/syaq`). 
 
-The slim view: the bar, the key figures and the model on one line:
+Each colour is a category of the context window, sized to its share, and the yellow marker is where auto-compaction starts.
 
-```
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ ◆ █░░░░░░░░░░░░░░░░░░░░░░┃░  40k/1M  4%  ·  Opus 5.5  ·  5h 19%  ·  week 46% │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
+**Mid-session.** Messages take over. On pay-as-you-go plans, the footer adds what the session has cost:
 
-Past the threshold, the badge turns yellow and the panel suggests `/compact`. Here on an 80-column terminal, where the full view trims itself (see [the widths](#the-panel)):
+![The full view at 35%, with messages as the largest category and a $4.12 session cost](docs/screenshots/busy-full.png)
+![The slim view at 35%](docs/screenshots/busy-slim.png)
 
-```
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ ◆ Context  over 60% · run /compact                          620k of 1M  62%  │
-│                                                                              │
-│ ███████████████████████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░┃░░ │
-│ ■ messages 548k 55%  ■ system tools 27k 3%  ■ skills 10k 1%  ■ other 35k 4%  │
-│                                                 Opus 5.5 · 5h 41% · week 58% │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
+**Past your threshold.** The badge turns yellow and the panel suggests `/compact`; the full view is the one at the top:
 
-The same moment in the slim view:
+![The slim view at 62%, with "run /compact"](docs/screenshots/over-slim.png)
 
-```
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ ◆ ███████████████████░░░░░░░░░░┃  620k/1M  62%  ·  run /compact  ·  Opus 5.5 │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
+**Close to auto-compaction.** The badge turns red from 85%. The rate limits have their own colours: yellow from 60%, red from 85%:
 
-At the same time, the prompt box offers `/compact` (Tab, then Enter, runs it) and a toast says so:
+![The full view at 88%, with a red badge, the 5-hour limit in yellow and the weekly limit in red](docs/screenshots/critical-full.png)
+![The slim view at 88%](docs/screenshots/critical-slim.png)
+
+When the context crosses the threshold, the prompt box offers `/compact` (Tab, then Enter, runs it) and a toast says so:
 
 ```
 🧹 Conversation context is 62% full · run /compact to free up space
@@ -131,11 +109,11 @@ syaq: Unknown view "tiny". Use /syaq, /syaq full, /syaq slim or /syaq at <percen
 | You see | It means |
 | --- | --- |
 | Coloured runs on the bar | one per category of the context window (system prompt, tools, memory files, skills, messages and so on), sized to its share. Past the five largest, the rest share one "other" run. The filled part always matches the percentage. Deferred tools sit outside the window, so they're left out |
-| `┃` | where auto-compaction starts, when it's turned on |
+| The yellow marker | where auto-compaction starts, when it's turned on |
 | `■ skills 10k 1%` | a legend entry: the category's tokens and its share of the window |
-| `■ free space 927k` | the room left before auto-compaction starts, not before the window is full |
-| The badge, `4%` | how full the context is: green, yellow from your threshold, red from 85% |
-| `over 60% · run /compact` | you're past the threshold: a good moment to compact |
+| `■ free space 617k` | the room left before auto-compaction starts, not before the window is full |
+| The badge, `35%` | how full the context is: green, yellow from your threshold, red from 85% |
+| `over 60% · consider running /compact` | you're past the threshold: a good moment to compact. Shorter on narrower terminals |
 | The footer | the model, rate-limit usage (5-hour, weekly, spend) and, on pay-as-you-go plans, what the session has cost so far. The limit figures turn yellow at 60% and red at 85% |
 
 The full view fits the terminal's width, dropping what's there for reference before what you act on:
@@ -143,7 +121,7 @@ The full view fits the terminal's width, dropping what's there for reference bef
 | Width | What changes |
 | --- | --- |
 | 100 columns and up | Everything shows |
-| 70 to 99 | No auto-compact point in the header (the `┃` marks it), a shorter `/compact` hint, the three largest categories in the legend and no free space, short footer labels |
+| 70 to 99 | No auto-compact point in the header (the marker shows it), a shorter `/compact` hint, the three largest categories in the legend and no free space, short footer labels |
 | 50 to 69 | Header, bar and limits only: no legend, model or cost |
 | Under 50 | The slim layout, whatever view you chose; widen the terminal and your view comes back |
 
