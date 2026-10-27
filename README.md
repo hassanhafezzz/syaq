@@ -2,26 +2,25 @@
 
 # Syaq
 
+Know your context. Compact before it hurts.
+
 Syaq (سياق, Arabic for context) is a context mod for Claude Code.
 
-Claude Code's context fills up quietly in the background and you only find out when auto-compaction interrupts you and burns more tokens than it needs to.
+Claude Code's context fills up quietly in the background. You only find out when auto-compaction interrupts you, at the worst moment.
 
-Syaq keeps the context in 'context'. How full it is, what's filling it, where auto-compact will kick in, plus your usage limits and the current model.
+Syaq puts it in view: how full the context is, what's filling it, where auto-compact will kick in, plus your usage limits and the current model.
 
 When you hit a threshold you set (60% by default), it nudges you to run `/compact`, while it's still cheap, instead of at the last second.
 
 ```
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ ◆ Context                             40k of 1M · auto-compacts at 967k  4%  │
-│                                                                              │
-│ ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┃░░░ │
-│ ■ system prompt 2.9k <1%  ■ system tools 27k 3%  ■ skills 10k 1%             │
-│ ■ free space 927k                                                            │
-│                                   model Opus 5.5 · 5h limit 19% · weekly 46% │
-╰──────────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ◆ Context                                                 40k of 1M · auto-compacts at 967k  4%  │
+│                                                                                                  │
+│ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┃░░ │
+│ ■ system prompt 2.9k <1%  ■ system tools 27k 3%  ■ skills 10k 1%  ■ free space 927k              │
+│                                                       model Opus 5.5 · 5h limit 19% · weekly 46% │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
-
-Know your context. Compact before it hurts.
 
 ## Install
 
@@ -47,7 +46,7 @@ It needs Claude Code 2.1.310 or later.
 
 Claude Code doesn't update plugins from your own marketplaces on its own. To get new versions as they're released, turn on auto-update once: run `/plugin`, open **Marketplaces**, pick **syaq**, then **Enable auto-update**. Run `/reload-plugins` when it tells you an update is in.
 
-Or update by hand from a shell:
+Or update by hand from a shell (`syaq@syaq` is the plugin `syaq` from the marketplace `syaq`):
 
 ```
 claude plugin update syaq@syaq
@@ -56,23 +55,12 @@ claude plugin update syaq@syaq
 ### Uninstalling
 
 ```
-claude plugin uninstall syaq
+claude plugin uninstall syaq@syaq
 ```
 
 ## What it looks like
 
-The full view, early in a session. Each colour is a category of the context window, sized to its share, and the `┃` is where auto-compaction starts:
-
-```
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ ◆ Context                             40k of 1M · auto-compacts at 967k  4%  │
-│                                                                              │
-│ ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░┃░░░ │
-│ ■ system prompt 2.9k <1%  ■ system tools 27k 3%  ■ skills 10k 1%             │
-│ ■ free space 927k                                                            │
-│                                   model Opus 5.5 · 5h limit 19% · weekly 46% │
-╰──────────────────────────────────────────────────────────────────────────────╯
-```
+The panel at the top is the full view early in a session, on a terminal 100 columns or wider. Each colour is a category of the context window, sized to its share, and the `┃` is where auto-compaction starts.
 
 The slim view: the bar, the key figures and the model on one line:
 
@@ -82,7 +70,7 @@ The slim view: the bar, the key figures and the model on one line:
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-Past the threshold, the badge turns yellow and the panel suggests `/compact`:
+Past the threshold, the badge turns yellow and the panel suggests `/compact`. Here on an 80-column terminal, where the full view trims itself (see [the widths](#the-panel)):
 
 ```
 ╭──────────────────────────────────────────────────────────────────────────────╮
@@ -108,7 +96,18 @@ At the same time, the prompt box offers `/compact` (Tab, then Enter, runs it) an
 🧹 Conversation context is 62% full · run /compact to free up space
 ```
 
-### In the chat
+## Use it
+
+```
+/syaq              switch between the full and slim views
+/syaq full         the full view: header, bar, legend and footer
+/syaq slim         the slim view: one line
+/syaq at 70        suggest /compact from 70% instead of 60% (any percent from 1 to 99)
+```
+
+Your view is remembered across sessions. The views' earlier names, `detailed` and `simple`, still work.
+
+Syaq answers in the chat:
 
 ```
 /syaq
@@ -127,24 +126,14 @@ syaq: Give a percent from 1 to 99, like /syaq at 70.
 syaq: Unknown view "tiny". Use /syaq, /syaq full, /syaq slim or /syaq at <percent>.
 ```
 
-## Use it
-
-```
-/syaq              switch between the full and slim views
-/syaq full         the full view: header, bar, legend and footer
-/syaq slim         the slim view: one line
-/syaq at 70        suggest /compact from 70% instead of 60% (any percent from 1 to 99)
-```
-
-Your view is remembered across sessions. The views' earlier names, `detailed` and `simple`, still work.
-
 ### The panel
 
 | You see | It means |
 | --- | --- |
-| Coloured runs on the bar | one per category of the context window (system prompt, tools, memory files, skills, messages and so on), sized to its share. Past the five largest, the rest share one "other" run. The filled part always matches the percentage |
+| Coloured runs on the bar | one per category of the context window (system prompt, tools, memory files, skills, messages and so on), sized to its share. Past the five largest, the rest share one "other" run. The filled part always matches the percentage. Deferred tools sit outside the window, so they're left out |
 | `┃` | where auto-compaction starts, when it's turned on |
 | `■ skills 10k 1%` | a legend entry: the category's tokens and its share of the window |
+| `■ free space 927k` | the room left before auto-compaction starts, not before the window is full |
 | The badge, `4%` | how full the context is: green, yellow from your threshold, red from 85% |
 | `over 60% · run /compact` | you're past the threshold: a good moment to compact |
 | The footer | the model, rate-limit usage (5-hour, weekly, spend) and, on pay-as-you-go plans, what the session has cost so far. The limit figures turn yellow at 60% and red at 85% |
@@ -181,11 +170,11 @@ Syaq is a Claude Code hooks module with six hooks:
 - **`prompt.suggest`**, for Claude Code's own suggestions only, puts `/compact` in their place while the nudge is pending.
 - **`ui.render`**, on the band above the prompt, draws the panel and passes the band on, so whatever else draws there stacks underneath.
 
-Beyond those it uses Claude Code's usage figures for the session, its store for your view, its settings for the threshold, and its toasts. Deferred tools, which sit outside the window, are left out. Syaq reads no files, runs no programs, makes no network calls, and reads no credentials.
+Beyond those it uses Claude Code's usage figures for the session, its store for your view, its settings for the threshold, and its toasts.
 
 ## Your data
 
-Everything stays on your machine. Your view is kept in Syaq's own store under your Claude Code configuration folder, and the threshold in your Claude Code settings. Syaq makes no network calls.
+Everything stays on your machine. Your view is kept in Syaq's own store under your Claude Code configuration folder, and the threshold in your Claude Code settings. Syaq reads no files, runs no programs, makes no network calls, and reads no credentials.
 
 ## Develop
 
@@ -199,14 +188,17 @@ Check it, type-check it and run the tests:
 
 ```
 claude plugin validate .
-tsc -p .
+npx -p typescript tsc -p .
 claude plugin test .
 ```
 
-`tsc` needs `.claude-plugin/types/`, which Claude Code writes the first time it loads the mod.
+The type-check needs `.claude-plugin/types/`, which Claude Code writes the first time it loads the mod.
 
 | Path | What it holds |
 | --- | --- |
+| `.claude-plugin/plugin.json` | The manifest, including the **Suggest /compact at (%)** setting |
+| `.claude-plugin/marketplace.json` | The marketplace that serves the mod |
+| `hooks/hooks.json` | Points Claude Code at the hooks module |
 | `hooks/register.tsx` | The hooks module: measures usage and draws the panel |
 | `types/index.d.ts` | The mod's state contract |
 | `tests/band.test.tsx` | Tests run by `claude plugin test` |
