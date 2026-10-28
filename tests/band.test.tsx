@@ -1,5 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
-import type { ContextCategory, ContextCategoryKind, On } from 'claude-code'
+import type { ContextCategory, ContextCategoryKind, On, SessionMessage } from 'claude-code'
 
 const BAND = {
   plugin: 'syaq',
@@ -40,8 +40,14 @@ const row = (name: string, tokens: number, color: string, kind: ContextCategoryK
 // A session that measured 90k of a 1M window, unless a test names other figures
 const seedUsage = (
   on: On,
-  { total = 90_000, fiveHour = 23, extra = [] as ContextCategory[] } = {},
+  {
+    total = 90_000 as number | (() => number),
+    fiveHour = 23,
+    extra = [] as ContextCategory[],
+  } = {},
 ) => {
+  // A function is read at each measurement, so a test can move the fill
+  const totalNow = () => (typeof total === 'function' ? total() : total)
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('session.usage', () => ({
     value: {
@@ -63,11 +69,11 @@ const seedUsage = (
             row('Free space', 877_000, 'promptBorder', 'free'),
             row('Autocompact buffer', 33_000, 'inactive', 'buffer'),
           ],
-          totalTokens: total,
+          totalTokens: totalNow(),
           maxTokens: 1_000_000,
           rawMaxTokens: 1_000_000,
           autocompactSource: 'model-default',
-          percentage: Math.round(total / 10_000),
+          percentage: Math.round(totalNow() / 10_000),
           gridRows: [],
           model: 'claude-opus-5-5',
           memoryFiles: [],
@@ -553,5 +559,179 @@ test('the legend lowercases category names but keeps acronyms', async ($, on) =>
 
   expect(await ui.find({ type: 'Text', text: /^MCP server instructions $/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^system prompt $/ })).toBeDefined()
+  await ui.unmount()
+})
+
+// The chip beside the label and the cells the sweep draws, at this step
+// The icon's glyph, read off the Text that holds it and its space
+const iconOf = async (ui: { find: Function }) =>
+  (await ui.find({ type: 'Text', text: /^[●⬮│] $/ }))?.text?.trim()
+
+const pulseOf = async (ui: { find: Function; findAll: Function }) => {
+  const chip = await ui.find({ type: 'Text', text: /^  ([+−]|freed)/ })
+  const cells = await ui.findAll({ type: 'Text', text: /^█+$/ })
+  return {
+    chip: chip?.text?.trim(),
+    chipProps: chip?.props,
+    green: cells.filter((c: { props: { color?: string } }) => c.props.color === 'success').length,
+  }
+}
+
+test('a grown fill turns the icon edge-on and back, with no chip or sweep', async ($, on) => {
+  let total = 90_000
+  seedUsage(on, { total: () => total })
+  drawEngine(on)
+  mock.store(on)
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  const clock = mock.clock(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(BAND)
+  // The first measurement has nothing to move from
+  expect(await iconOf(ui)).toBe('●')
+
+  total = 120_000
+  await $.session.measure({ context: { window: 1_000_000 }, rateLimits: [], changed: ['context'] })
+  const seen = [await iconOf(ui)]
+  for (let i = 0; i < 3; i++) {
+    await clock.advance(240)
+    seen.push(await iconOf(ui))
+  }
+  expect(seen).toEqual(['⬮', '│', '⬮', '●'])
+  // The bar and the label keep still
+  const fresh = await pulseOf(ui)
+  expect(fresh.chip).toBeUndefined()
+  expect(fresh.green).toBe(0)
+  expect(await ui.find({ type: 'Text', text: /^  \+/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('a freed fill flashes the freed cells green and names what it freed', async ($, on) => {
+  let total = 120_000
+  seedUsage(on, { total: () => total })
+  drawEngine(on)
+  mock.store(on)
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  const clock = mock.clock(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(BAND)
+
+  total = 40_000
+  await $.session.measure({ context: { window: 1_000_000 }, rateLimits: [], changed: ['context'] })
+  const fresh = await pulseOf(ui)
+  expect(fresh.chip).toBe('−80k freed')
+  expect(fresh.chipProps?.color).toBe('success')
+  expect(fresh.green).toBeGreaterThan(0)
+
+  await clock.advance(180 * 10)
+  expect(await pulseOf(ui)).toMatchObject({ chip: undefined, green: 0 })
+  await ui.unmount()
+})
+
+test('/compact pulses even before the usage shows the drop, and once', async ($, on) => {
+  let total = 90_000
+  seedUsage(on, { total: () => total })
+  drawEngine(on)
+  mock.store(on)
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  const summary: SessionMessage[] = [{ role: 'user', text: 'The summary', toolUses: [] }]
+  on('session.compact', () => ({ messages: summary, tokensBefore: 90_000, tokensAfter: 40_000 }))
+  const clock = mock.clock(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(BAND)
+
+  // The usage still reads the old size when the compaction returns
+  await $.session.compact({ trigger: 'manual', messages: summary })
+  const fresh = await pulseOf(ui)
+  expect(fresh.chip).toBe('−50k freed')
+  expect(fresh.green).toBeGreaterThan(0)
+  await clock.advance(180 * 10)
+
+  // The measurement that catches up does not play it again
+  total = 40_000
+  await $.session.measure({ context: { window: 1_000_000 }, rateLimits: [], changed: ['context'] })
+  expect((await pulseOf(ui)).chip).toBeUndefined()
+  await ui.unmount()
+})
+
+test('the slim view pulses /compact too', async ($, on) => {
+  seedUsage(on, { total: () => 90_000 })
+  drawEngine(on)
+  mock.store(on, { view: 'slim' })
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  const summary: SessionMessage[] = [{ role: 'user', text: 'The summary', toolUses: [] }]
+  on('session.compact', () => ({ messages: summary, tokensBefore: 90_000, tokensAfter: 40_000 }))
+  mock.clock(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(BAND)
+  await $.session.compact({ trigger: 'manual', messages: summary })
+  const fresh = await pulseOf(ui)
+  expect(fresh.chip).toBe('−50k freed')
+  expect(fresh.green).toBeGreaterThan(0)
+  // The bar makes room for the chip, so the one line still fits inside the border
+  const texts: { props: { wrap?: string }; text: string }[] = await ui.findAll({ type: 'Text' })
+  const line = texts.find(t => t.props.wrap === 'truncate-end')
+  expect(line?.text.length).toBeLessThanOrEqual(BAND.props.bodyColumns - 4)
+  await ui.unmount()
+})
+
+test('a measurement that leaves the fill alone does not pulse', async ($, on) => {
+  seedUsage(on)
+  drawEngine(on)
+  mock.store(on)
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(BAND)
+  await $.session.measure({ context: { window: 1_000_000 }, rateLimits: [], changed: ['context'] })
+  expect((await ui.find({ type: 'Text', text: /^● $/ }))?.props.color).toBe('claude')
+  await ui.unmount()
+})
+
+test('past the point the icon keeps its colour', async ($, on) => {
+  seedUsage(on, { total: 620_000 })
+  drawEngine(on)
+  mock.store(on)
+  toastStack(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(BAND)
+  expect((await ui.find({ type: 'Text', text: /^● $/ }))?.props.color).toBe('claude')
+  await ui.unmount()
+})
+
+test('moves during a turn wait for the spinner to go, then pulse as one', async ($, on) => {
+  let total = 90_000
+  seedUsage(on, { total: () => total })
+  drawEngine(on)
+  mock.store(on)
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  const clock = mock.clock(on)
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount(BAND)
+  const measure = () => $.session.measure({ context: { window: 1_000_000 }, rateLimits: [], changed: ['context'] })
+
+  await $.turn.start({ text: 'hi', turnId: 't1' })
+  // A subagent's turn ends inside the main one and keeps it still
+  await $.turn.start({ text: 'look', turnId: 't2', agentId: 'a1' })
+  total = 100_000
+  await measure()
+  total = 120_000
+  await measure()
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't2', agentId: 'a1', reason: 'answer' })
+  await clock.advance(240)
+  expect(await iconOf(ui)).toBe('●')
+
+  // The whole turn's growth, once
+  await $.turn.complete({ answer: 'hello', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  expect(await iconOf(ui)).toBe('⬮')
+  await clock.advance(240 * 3)
+  expect(await iconOf(ui)).toBe('●')
   await ui.unmount()
 })

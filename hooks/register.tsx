@@ -1,11 +1,40 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, SessionCost, SessionRateLimit } from 'claude-code'
+import type { EngineInterface, Register, SessionCost, SessionRateLimit, Timer } from 'claude-code'
 
 import type { Limit, Segment, Snapshot, View } from '../types'
 
 // Bump the shape when Snapshot changes: a value stored under another reads as absent
 const snapshot = atom({ plugin: 'syaq', key: 'snapshot' } as const, null, { shape: 'v2' })
 const view = atom({ plugin: 'syaq', key: 'view' } as const, 'slim')
+// The pulse's step, 0 at rest: each write redraws the band
+const frame = atom({ plugin: 'syaq', key: 'frame' } as const, 0)
+
+// The icon is a solid dot, round so it reads apart from the legend's squares
+const ICON = '●'
+
+// A grown fill turns the icon edge-on and back, one frame per step, then it rests as ●
+const GROW_FRAMES = ['⬮', '│', '⬮']
+const GROW_MS = 240
+
+// A freed fill pulses: the freed cells sweep across the bar, and a chip beside the
+// label names what was freed, then fades. The sweep takes the first steps, the chip
+// all of them
+const FREE_MS = 180
+const FREE_STEPS = 10
+const SWEEP_STEPS = 6
+
+// The fill before and after, in tokens; `to` is absent when a compaction does not
+// report its size, so the chip says "freed" and the bar waits for the measurement
+type Pulse = { from: number | null; to: number | null }
+
+const isGrowth = (pulse: Pulse): boolean => pulse.from !== null && pulse.to !== null && pulse.to > pulse.from
+
+// Bold while fresh, then plain, then dim
+const chipStyle = (step: number): { weight?: 'bold'; dimColor?: boolean } =>
+  step <= 4 ? { weight: 'bold' } : step <= 7 ? {} : { dimColor: true }
+
+const chipFor = (pulse: Pulse): string =>
+  pulse.from === null || pulse.to === null ? 'freed' : `−${formatTokens(pulse.from - pulse.to)} freed`
 
 // "detailed" and "simple" are the views' earlier names: the command and a stored
 // choice still take them
@@ -57,8 +86,30 @@ const toCompactAt = (v: unknown): number | null =>
 const levelColor = (percent: number, warnAt = DEFAULT_COMPACT_AT): string =>
   percent >= 85 ? 'error' : percent >= warnAt ? 'warning' : 'success'
 
+// The freed cells drawn over the bar at this step: they flash green and drain right
+// to left. Glyphs stay single-width, so the slim line's sums hold
+const sweepCells = (
+  cells: { color: string; glyph: string }[],
+  snap: Snapshot,
+  width: number,
+  pulse: Pulse,
+  step: number,
+) => {
+  if (pulse.from === null || pulse.to === null) return
+  const at = (tokens: number) => Math.min(width, Math.max(0, Math.round((tokens / snap.max) * width)))
+  const from = at(pulse.from)
+  const to = at(pulse.to)
+  const cut = from - Math.round(Math.max(0, from - to) * Math.min(1, step / SWEEP_STEPS))
+  for (let i = to; i < cut; i++) cells[i] = { color: 'success', glyph: '█' }
+  for (let i = cut; i < from; i++) cells[i] = { color: 'subtle', glyph: '░' }
+}
+
 // One cell per column: the used share split across categories, the rest free, then the marker
-const barRuns = (snap: Snapshot, width: number): { color: string; text: string }[] => {
+const barRuns = (
+  snap: Snapshot,
+  width: number,
+  sweep?: { pulse: Pulse; step: number },
+): { color: string; text: string }[] => {
   const used = snap.segments.filter(s => s.kind === 'used' && s.tokens > 0)
   const usedTokens = used.reduce((n, s) => n + s.tokens, 0)
   // The used cells match the window's fill; any fill shows at least one
@@ -76,6 +127,7 @@ const barRuns = (snap: Snapshot, width: number): { color: string; text: string }
     for (let j = 0; j < counts[i]!; j++) cells.push({ color: s.color, glyph: '█' })
   })
   while (cells.length < width) cells.push({ color: 'subtle', glyph: '░' })
+  if (sweep) sweepCells(cells, snap, width, sweep.pulse, sweep.step)
   if (snap.threshold !== null) {
     const at = Math.min(width - 1, Math.round((snap.threshold / snap.max) * width))
     cells[at] = { color: 'warning', glyph: '┃' }
@@ -147,7 +199,41 @@ const suggestCompact = async ($: EngineInterface, warn: Warn) => {
   if (!isShown && warn.isPast) warn.isSuggestPending = true
 }
 
-const refresh = async ($: EngineInterface, warn: Warn) => {
+// The running pulse, if any; while a turn runs a move is held and plays once the
+// spinner is gone; a compaction plays its drop before the measurement sees it.
+// One per registration
+type Burst = {
+  timer: Timer | null
+  pulse: Pulse | null
+  isTurning: boolean
+  held: Pulse | null
+  isFreedAhead: boolean
+}
+
+// A move during a pulse starts it over; moves during a turn fold into one, from
+// where the turn began to where it ended, played when the turn completes
+const play = ($: EngineInterface, burst: Burst, pulse: Pulse) => {
+  if (burst.isTurning) {
+    burst.held = burst.held ? { from: burst.held.from, to: pulse.to } : pulse
+    return
+  }
+  burst.timer?.cancel()
+  burst.pulse = pulse
+  const [ms, steps] = isGrowth(pulse) ? [GROW_MS, GROW_FRAMES.length] : [FREE_MS, FREE_STEPS]
+  let step = 1
+  void update($, frame, () => step).catch(() => {})
+  const timer = $.clock.every(ms, () => {
+    step = step < steps ? step + 1 : 0
+    if (step === 0) {
+      timer.cancel()
+      if (burst.timer === timer) burst.timer = null
+    }
+    void update($, frame, () => step).catch(() => {})
+  })
+  burst.timer = timer
+}
+
+const refresh = async ($: EngineInterface, warn: Warn, burst: Burst) => {
   const { context, rateLimits, cost } = await $.session.usage({ breakdown: 'summary' })
   const b = context.breakdown
   if (!b) return
@@ -176,7 +262,14 @@ const refresh = async ($: EngineInterface, warn: Warn) => {
   if (warn.isPast && !wasPast) {
     $.ui.toast(`🧹 Conversation context is ${next.percent}% full · run /compact to free up space`, { timeoutMs: 6000 })
   }
+  // The first measurement has nothing to move from
+  const prev = await read($, snapshot)
   await update($, snapshot, () => next)
+  if (prev && prev.total !== next.total) {
+    // A compaction has already played this drop
+    if (next.total > prev.total || !burst.isFreedAhead) play($, burst, { from: prev.total, to: next.total })
+    burst.isFreedAhead = false
+  }
   await suggestCompact($, warn)
 }
 
@@ -188,6 +281,7 @@ const patchFigures = async ($: EngineInterface, rateLimits: SessionRateLimit[], 
 export const register: Register = (on, options) => {
   // The band measures once on its own; later measurements come through the hooks
   let hasMeasuredFromBand = false
+  const burst: Burst = { timer: null, pulse: null, isTurning: false, held: null, isFreedAhead: false }
   // A changed setting reloads the module, so the point is read once here
   const warn: Warn = {
     at: toCompactAt(options.compactAt) ?? DEFAULT_COMPACT_AT,
@@ -213,7 +307,7 @@ export const register: Register = (on, options) => {
     ])
     const storedView = toView(stored)
     if (storedView) await update($, view, () => storedView)
-    void refresh($, warn).catch(() => {})
+    void refresh($, warn, burst).catch(() => {})
     return result
   })
 
@@ -246,11 +340,29 @@ export const register: Register = (on, options) => {
     return { text: `${chosen === 'full' ? 'Full' : 'Slim'} view on` }
   })
 
+  // The main loop's turn is the spinner: the band keeps still under it. A
+  // subagent's turn runs inside the main one, so only the main loop's counts
+  on('turn.start', async ($, e, next) => {
+    if (e.agentId === undefined) burst.isTurning = true
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId === undefined) {
+      burst.isTurning = false
+      const held = burst.held
+      burst.held = null
+      if (held) play($, burst, held)
+    }
+    return result
+  })
+
   on('session.measure', async ($, e, next) => {
     const result = await next(e)
     const hasSnapshot = (await read($, snapshot)) !== null
     // Only a moved fill needs the category breakdown
-    if (e.changed.includes('context') || !hasSnapshot) void refresh($, warn).catch(() => {})
+    if (e.changed.includes('context') || !hasSnapshot) void refresh($, warn, burst).catch(() => {})
     else {
       void patchFigures($, e.rateLimits, e.cost).catch(() => {})
       void suggestCompact($, warn).catch(() => {})
@@ -269,7 +381,15 @@ export const register: Register = (on, options) => {
 
   on('session.compact', async ($, e, next) => {
     const result = await next(e)
-    void refresh($, warn).catch(() => {})
+    // The usage read right after can still hold the old size, so the freeing
+    // pulses off the compaction itself; the refresh that sees the drop stays still
+    const isFreed = e.trigger !== 'precompute' && e.agentId === undefined && result.skip === undefined
+    if (isFreed) {
+      const from = result.tokensBefore ?? (await read($, snapshot))?.total ?? null
+      play($, burst, { from, to: result.tokensAfter ?? null })
+      burst.isFreedAhead = true
+    }
+    void refresh($, warn, burst).catch(() => {})
     return result
   })
 
@@ -279,7 +399,7 @@ export const register: Register = (on, options) => {
     // Loaded mid-session: measure once now; the write redraws the band
     if (snap === null && !hasMeasuredFromBand) {
       hasMeasuredFromBand = true
-      void refresh($, warn).catch(() => {})
+      void refresh($, warn, burst).catch(() => {})
     }
     if (e.props.hasSurvey || snap === null || snap.max === 0) return next(e)
 
@@ -290,6 +410,21 @@ export const register: Register = (on, options) => {
     const drawn: Snapshot = { ...snap, segments: groupSmallest(snap.segments, topCategories(fit)) }
     const shouldCompact = snap.percent >= warn.at
 
+    // Read always, so a pulse's first step redraws the band; a stored step a reload
+    // cut short has no timer to end it, so only a running pulse draws one
+    const stored = await read($, frame)
+    const step = burst.timer ? stored : 0
+    const pulse = step > 0 ? burst.pulse : null
+    // Growth turns the icon alone; a freeing sweeps the bar and shows the chip
+    const icon = pulse && isGrowth(pulse) ? (GROW_FRAMES[step - 1] ?? ICON) : ICON
+    const sweep = pulse && !isGrowth(pulse) ? { pulse, step } : undefined
+    const chip = sweep ? { text: chipFor(sweep.pulse), ...chipStyle(step) } : null
+    const chipText = chip ? (
+      <Text color="success" weight={chip.weight} dimColor={chip.dimColor}>
+        {`  ${chip.text}`}
+      </Text>
+    ) : null
+
     let body
     if (isSlim) {
       const usage = `${formatTokens(snap.total)}/${formatTokens(snap.max)}`
@@ -297,10 +432,11 @@ export const register: Register = (on, options) => {
       const shown = snap.limits.map(l => ({ label: limitLabel(l.kind, 'short'), percent: l.percent }))
       const limitsWidth = shown.reduce((n, l) => n + `  ·  ${l.label} ${l.percent}%`.length, 0)
       const hint = shouldCompact ? '  ·  run /compact' : ''
-      // Border and padding, "✸ ", the bar, then "  usage  pct", the hint, the model and the
-      // limits; a narrow terminal drops the limits first, then the model, never the hint
+      // Border and padding, the icon and its space, the bar, then "  usage  pct", the chip, the hint, the model
+      // and the limits; a narrow terminal drops the limits first, then the model, never the hint. The bar
+      // gives the chip its room while it shows, so the line never runs past the border
       const room = e.props.bodyColumns - 4
-      const fixed = 2 + `  ${usage}  ${pct}${hint}`.length
+      const fixed = 2 + `  ${usage}  ${pct}${chip ? `  ${chip.text}` : ''}${hint}`.length
       const model = snap.model ? modelName(snap.model) : null
       const modelWidth = model ? `  ·  ${model}`.length : 0
       const withModel = room - fixed - modelWidth >= 10
@@ -313,14 +449,15 @@ export const register: Register = (on, options) => {
       body = (
         <Box borderStyle="round" borderColor="subtle" paddingX={1}>
           <Text wrap="truncate-end">
-            <Text color="claude">✸ </Text>
-            {barRuns(drawn, width).map((r, i) => (
+            <Text color="claude">{`${icon} `}</Text>
+            {barRuns(drawn, width, sweep).map((r, i) => (
               <Text key={`r${i}`} color={r.color}>
                 {r.text}
               </Text>
             ))}
             <Text weight="bold">{`  ${usage}`}</Text>
             <Text color={levelColor(snap.percent, warn.at)} weight="bold">{`  ${pct}`}</Text>
+            {chipText}
             {shouldCompact ? <Text color="warning">{hint}</Text> : null}
             {withModel && model ? (
               <Text>
@@ -343,7 +480,7 @@ export const register: Register = (on, options) => {
       const isWide = fit === 'wide'
       const isNarrow = fit === 'narrow'
       // Border and padding take four columns
-      const runs = barRuns(drawn, Math.max(10, e.props.bodyColumns - 4))
+      const runs = barRuns(drawn, Math.max(10, e.props.bodyColumns - 4), sweep)
       // "run /compact" wherever room is short, so the command never reads as a label
       const hint = isWide
         ? `  over ${warn.at}% · consider running /compact`
@@ -373,8 +510,9 @@ export const register: Register = (on, options) => {
         <Box flexDirection="column" borderStyle="round" borderColor="subtle" paddingX={1}>
           <Box flexDirection="row" justifyContent="space-between" marginBottom={1}>
             <Text wrap="truncate-end">
-              <Text color="claude">✸ </Text>
+              <Text color="claude">{`${icon} `}</Text>
               <Text weight="bold">Context</Text>
+              {chipText}
               {shouldCompact ? <Text color="warning">{hint}</Text> : null}
             </Text>
             <Text>

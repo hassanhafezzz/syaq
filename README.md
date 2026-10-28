@@ -10,7 +10,7 @@ Syaq puts it in view: how full the context is, what's filling it, where auto-com
 
 When you hit a threshold you set (60% by default), it nudges you to run `/compact`, while it's still cheap, instead of at the last second.
 
-![The Syaq panel at 62%: a yellow badge with "over 60% · consider running /compact", a bar split into coloured categories, a legend with each one's tokens, the auto-compact marker near the end, and the model and rate limits in the footer](docs/screenshots/over-full.png)
+![The slim view after /compact: one line with the context bar split into coloured categories, the yellow auto-compact marker near the end, the fill, the model and the rate limits; the freed part of the bar flashes green as it drains](docs/screenshots/compact-slim.gif)
 
 ## Install
 
@@ -50,23 +50,31 @@ claude plugin uninstall syaq@syaq
 
 ## What it looks like
 
-There are two views: a slim (compact) view, shown by default, and a full (detailed) view. Switch between them with `/syaq`.
+Syaq starts in the **slim view**: one line with the bar, the fill, the model and your limits. When you want the breakdown, `/syaq full` switches to the **full view**, which adds a legend of what's filling the context, where auto-compaction starts, and the session's cost. Run `/syaq` again to go back.
 
-Each colour is a category of the context window, sized to its share, and the yellow marker is where auto-compaction starts.
+Each colour on the bar is a category of the context window, sized to its share, and the yellow marker is where auto-compaction starts.
 
-**Mid-session.** Messages take over. On pay-as-you-go plans, the footer adds what the session has cost:
+**Mid-session.** Messages take over:
 
-![The full view at 35%, with messages as the largest category and a $4.12 session cost](docs/screenshots/busy-full.png)
 ![The slim view at 35%](docs/screenshots/busy-slim.png)
 
-**Past your threshold.** The badge turns yellow and the panel suggests `/compact`; the full view is the one at the top:
+The full view names each category. On pay-as-you-go plans it also shows what the session has cost:
+
+![The full view at 35%, with messages as the largest category and a $4.12 session cost](docs/screenshots/busy-full.png)
+
+**Past your threshold.** The badge turns yellow and the panel suggests `/compact`:
 
 ![The slim view at 62%, with "run /compact"](docs/screenshots/over-slim.png)
 
 **Close to auto-compaction.** The badge turns red from 85%. The rate limits have their own colours: yellow from 60%, red from 85%:
 
-![The full view at 88%, with a red badge, the 5-hour limit in yellow and the weekly limit in red](docs/screenshots/critical-full.png)
 ![The slim view at 88%](docs/screenshots/critical-slim.png)
+![The full view at 88%, with a red badge, the 5-hour limit in yellow and the weekly limit in red](docs/screenshots/critical-full.png)
+
+**After `/compact`.** The freed space flashes green and drains away, and the panel says how much was freed:
+
+![The slim view after /compact, the freed part of the bar flashing green](docs/screenshots/compact-slim.gif)
+![The full view after /compact: "−760k freed" beside Context, and the freed part of the bar flashing green as it drains to 12%](docs/screenshots/compact-full.gif)
 
 When the context crosses the threshold, the prompt box offers `/compact` (Tab, then Enter, runs it) and a toast says so:
 
@@ -77,13 +85,13 @@ When the context crosses the threshold, the prompt box offers `/compact` (Tab, t
 ## Use it
 
 ```
-/syaq              switch between the full and slim views
-/syaq full         the full view: header, bar, legend and footer
-/syaq slim         the slim view: one line
+/syaq              switch between the slim and full views
+/syaq slim         the slim view (default): one line
+/syaq full         the full view: adds the legend, auto-compact point and session cost
 /syaq at 70        suggest /compact from 70% instead of 60% (any percent from 1 to 99)
 ```
 
-Syaq starts in the slim view; whichever view you pick is remembered across sessions. The views' earlier names, `detailed` and `simple`, still work.
+Your view is remembered across sessions. The views' earlier names, `simple` and `detailed`, still work.
 
 Syaq answers in the chat:
 
@@ -106,28 +114,23 @@ syaq: Unknown view "tiny". Use /syaq, /syaq full, /syaq slim or /syaq at <percen
 
 ### The panel
 
+The legend entries and free space show only in the full view.
+
 | You see | It means |
 | --- | --- |
-| Coloured runs on the bar | one per category of the context window (system prompt, tools, memory files, skills, messages and so on), sized to its share. Past the five largest, the rest share one "other" run. The filled part always matches the percentage. Deferred tools sit outside the window, so they're left out |
-| The yellow marker | where auto-compaction starts, when it's turned on |
-| `■ skills 10k 1%` | a legend entry: the category's tokens and its share of the window |
-| `■ free space 617k` | the room left before auto-compaction starts, not before the window is full |
-| The badge, `35%` | how full the context is: green, yellow from your threshold, red from 85% |
-| `over 60% · consider running /compact` | you're past the threshold: a good moment to compact. Shorter on narrower terminals |
-| The footer | the model, rate-limit usage (5-hour, weekly, spend) and, on pay-as-you-go plans, what the session has cost so far. The limit figures turn yellow at 60% and red at 85% |
+| Coloured runs on the bar | context categories (system prompt, tools, skills, messages…), sized by share; the top five, then "other" |
+| The yellow marker | where auto-compaction starts |
+| `■ skills 10k 1%` | a category's tokens and share |
+| `■ free space 617k` | room left before auto-compaction |
+| The badge, `35%` | context used: green, yellow past your threshold, red from 85% |
+| `over 60% · consider running /compact` | a good moment to compact |
+| `●` animates | the context just grew |
+| `−[N] freed` | a compaction just freed that much |
+| The footer | model, rate limits and session cost (yellow at 60%, red at 85%) |
 
-The full view fits the terminal's width, dropping what's there for reference before what you act on:
+The full view adapts to narrow terminals: under 100 columns the legend and labels shorten, under 70 only the header, bar and limits remain, and under 50 it falls back to the slim view.
 
-| Width | What changes |
-| --- | --- |
-| 100 columns and up | Everything shows |
-| 70 to 99 | No auto-compact point in the header (the marker shows it), a shorter `/compact` hint, the three largest categories in the legend and no free space, short footer labels |
-| 50 to 69 | Header, bar and limits only: no legend, model or cost |
-| Under 50 | The slim layout, whatever view you chose; widen the terminal and your view comes back |
-
-On a narrow terminal the slim view drops the rate limits, then the model, to keep the bar readable.
-
-The panel shows in the terminal. Elsewhere, you'll still get the toast and the `/compact` suggestion.
+The panel is terminal-only; elsewhere you still get the toast and the `/compact` suggestion.
 
 ### The /compact nudge
 
@@ -139,12 +142,13 @@ The threshold is 60% by default. Change it with `/syaq at <percent>`, or open `/
 
 ## How it works
 
-Syaq is a Claude Code hooks module with six hooks:
+Syaq is a Claude Code hooks module with eight hooks:
 
 - **`session.start`** registers the `/syaq` command, restores your view and measures the context.
 - **`command.run`**, for `/syaq` only, answers the command. Syaq sees no other command.
 - **`session.measure`** refreshes the panel when the context moves. When only the rate limits or cost moved, just those figures update.
-- **`session.compact`** measures again after each compaction.
+- **`session.compact`** shows what each compaction freed, then measures again.
+- **`turn.start`** and **`turn.complete`**, for your own turns only, keep the panel still while the spinner runs; a change during the turn plays once it ends.
 - **`prompt.suggest`**, for Claude Code's own suggestions only, puts `/compact` in their place while the nudge is pending. It never changes a suggestion another plugin makes, and it leaves Claude Code's own alone while no nudge is pending.
 - **`ui.render`**, on the band above the prompt, draws the panel and passes the band on, so whatever else draws there stacks underneath.
 
