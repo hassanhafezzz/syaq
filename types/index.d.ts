@@ -21,6 +21,6 @@ declare module 'claude-code' {
   interface PluginState {
     // The snapshot is kept under a shape tag (claude-code's Shaped, spelled out
     // because the contract can't import it)
-    'syaq': { snapshot: { shape: string; value: Snapshot | null }; view: View }
+    'syaq': { snapshot: { shape: string; value: Snapshot | null }; view: View; frame: number }
   }
 }
