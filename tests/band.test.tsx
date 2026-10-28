@@ -84,6 +84,7 @@ const seedUsage = (
 
 test('the band shows the totals, the compaction point and each category', async ($, on) => {
   seedUsage(on)
+  mock.store(on, { view: 'full' })
 
   // Another mod's band beneath this one
   on('ui.render', ($, e) => {
@@ -125,10 +126,10 @@ test('nothing is drawn before the first measurement', async ($, on) => {
   await ui.unmount()
 })
 
-test('the slim view is one bordered line with the key figures', async ($, on) => {
+test('the slim view is the default: one bordered line with the key figures', async ($, on) => {
   seedUsage(on)
   drawEngine(on)
-  mock.store(on, { view: 'slim' })
+  mock.store(on)
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(BAND)
@@ -153,13 +154,13 @@ test('/syaq toggles the view and names an unknown one', async ($, on) => {
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(BAND)
-  expect(await ui.find({ type: 'Text', text: /system tools/ })).toBeDefined()
-
-  expect((await $.command.run({ ...SYAQ, args: '' })).text).toBe('Slim view on')
   expect(await ui.find({ type: 'Text', text: /system tools/ })).toBeUndefined()
 
-  expect((await $.command.run({ ...SYAQ, args: 'Full' })).text).toBe('Full view on')
+  expect((await $.command.run({ ...SYAQ, args: '' })).text).toBe('Full view on')
   expect(await ui.find({ type: 'Text', text: /system tools/ })).toBeDefined()
+
+  expect((await $.command.run({ ...SYAQ, args: 'Slim' })).text).toBe('Slim view on')
+  expect(await ui.find({ type: 'Text', text: /system tools/ })).toBeUndefined()
 
   // The earlier names still work
   expect((await $.command.run({ ...SYAQ, args: 'simple' })).text).toBe('Slim view on')
@@ -201,7 +202,7 @@ test('a limit is coloured by the figure it shows', async ($, on) => {
 test('a window just short of 1M reads as 1M, not 1000k', async ($, on) => {
   seedUsage(on, { total: 999_600 })
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(BAND)
@@ -226,7 +227,7 @@ test('other surfaces draw without the panel', async ($, on) => {
 test('a measurement that moves only cost and limits updates them in place', async ($, on) => {
   seedUsage(on)
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
   // Stands for core, which echoes what changed
   on('session.measure', (_, e) => ({ changed: e.changed }))
 
@@ -288,7 +289,7 @@ test('crossing 60% toasts a /compact nudge once', async ($, on) => {
 test('over 60% the band hints at /compact and the prompt suggests it once', async ($, on) => {
   seedUsage(on, { total: 620_000 })
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
   on('session.measure', (_, e) => ({ changed: e.changed }))
   const suggested = promptBox(on)
 
@@ -368,7 +369,7 @@ test('under 60% nothing suggests /compact', async ($, on) => {
 test('the compactAt setting moves where the band suggests /compact', { options: { compactAt: 70 } }, async ($, on) => {
   seedUsage(on, { total: 620_000 })
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
   on('session.measure', (_, e) => ({ changed: e.changed }))
   const toasts = toastStack(on)
 
@@ -384,7 +385,7 @@ test('the compactAt setting moves where the band suggests /compact', { options: 
 test('past a lowered compactAt the band suggests /compact', { options: { compactAt: 5 } }, async ($, on) => {
   seedUsage(on)
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
   promptBox(on)
   const toasts = toastStack(on)
 
@@ -425,7 +426,7 @@ test('/syaq at sets the compactAt setting and names a bad percent', async ($, on
 test('both views keep the engine colours, the same in each', async ($, on) => {
   seedUsage(on)
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   // Wide enough that every category gets cells
@@ -452,7 +453,7 @@ test('past the five largest categories, the rest share one "other" entry', async
     ],
   })
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(BAND)
@@ -481,7 +482,7 @@ test('a medium terminal drops the reference figures and shortens the rest', asyn
     ],
   })
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(atWidth(80))
@@ -508,7 +509,7 @@ test('a medium terminal drops the reference figures and shortens the rest', asyn
 test('a narrow terminal keeps the badge, the bar, the hint and the limits', async ($, on) => {
   seedUsage(on, { total: 620_000 })
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(atWidth(60))
@@ -545,7 +546,7 @@ test('a very narrow terminal draws the slim layout and keeps the chosen view', a
 test('the legend lowercases category names but keeps acronyms', async ($, on) => {
   seedUsage(on, { extra: [row('MCP server instructions', 1400, 'cyan', 'used')] })
   drawEngine(on)
-  mock.store(on)
+  mock.store(on, { view: 'full' })
 
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   const ui = await $.ui.mount(BAND)
